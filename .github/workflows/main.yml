@@ -1,0 +1,50 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Распаковать zip с проектом
+        run: |
+          ZIP=$(ls *.zip | head -n 1)
+          echo "Архив: $ZIP"
+          mkdir -p project
+          unzip -q -o "$ZIP" -d project
+          if [ -f project/settings.gradle ]; then
+            echo "PROJECT_DIR=project" >> $GITHUB_ENV
+          else
+            SUB=$(dirname "$(find project -maxdepth 3 -name settings.gradle | head -n 1)")
+            echo "PROJECT_DIR=$SUB" >> $GITHUB_ENV
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Android SDK уже установлен на ubuntu-latest, отдельный setup-android не нужен
+      - name: Принять лицензии Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Собрать APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Сохранить APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zatseper-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          
